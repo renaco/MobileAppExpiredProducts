@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct MobileAppExpiredProductsApp: App {
+    @State private var scannedProductStore = ScannedProductStore()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(scannedProductStore)
         }
     }
 }
