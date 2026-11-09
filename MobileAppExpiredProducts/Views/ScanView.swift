@@ -29,6 +29,7 @@ struct ScanView: View {
             }
         }
         .overlay(alignment: .top) { topBar }
+        .overlay(alignment: .bottom) { captureButton }
         .task {
             await scanner.start()
         }
@@ -52,6 +53,14 @@ struct ScanView: View {
             }
         } message: { match in
             Text("\(match.date.formatted(date: .long, time: .omitted))\nRead as \u{201C}\(match.rawText)\u{201D}")
+        }
+        .alert(
+            "No expiration date found",
+            isPresented: $scanner.captureFoundNoDate
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Point the camera at the expiration date and try again.")
         }
         .preferredColorScheme(.dark)
     }
@@ -93,6 +102,22 @@ struct ScanView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 20)
         .padding(.top, 8)
+    }
+
+    /// Shutter button that captures the current frame and analyzes it.
+    private var captureButton: some View {
+        Button {
+            scanner.capturePhoto()
+        } label: {
+            Image(systemName: "camera.fill")
+                .font(.title)
+                .foregroundStyle(.white)
+                .frame(width: 72, height: 72)
+        }
+        .disabled(scanner.cameraState != .running)
+        .opacity(scanner.cameraState == .running ? 1 : 0.4)
+        .padding(.bottom, 32)
+        .accessibilityLabel("Take picture")
     }
 
     private var detectionFrame: some View {

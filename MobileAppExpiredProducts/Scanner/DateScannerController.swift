@@ -19,6 +19,8 @@ final class DateScannerController: NSObject, ObservableObject {
     @Published var cameraState: CameraState = .idle
     @Published var detectedDate: ExpirationDateDetector.Match?
     @Published var isTorchOn = false
+    /// Set when a manually captured frame contained no recognizable date.
+    @Published var captureFoundNoDate = false
 
     let session = AVCaptureSession()
 
@@ -30,6 +32,9 @@ final class DateScannerController: NSObject, ObservableObject {
     /// Skips analysis while a frame is in flight or a detection awaits confirmation.
     private var isAnalysisPaused = false
     private var isProcessingFrame = false
+    /// Set when the user taps the shutter button; the next frame reports
+    /// back even when no date is found in it.
+    private var isManualCapture = false
 
     var hasTorch: Bool { videoDevice?.hasTorch ?? false }
 
@@ -75,6 +80,14 @@ final class DateScannerController: NSObject, ObservableObject {
         detectedDate = nil
         videoOutputQueue.async { [weak self] in
             self?.isAnalysisPaused = false
+        }
+    }
+
+    /// Analyzes the next camera frame on demand, reporting back through
+    /// `captureFoundNoDate` when it contains no recognizable date.
+    func capturePhoto() {
+        videoOutputQueue.async { [weak self] in
+            self?.isManualCapture = true
         }
     }
 
@@ -161,6 +174,8 @@ extension DateScannerController: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 
     private func handleRecognizedText(request: VNRequest) {
+        let wasManualCapture = isManualCapture
+        isManualCapture = false
         defer { isProcessingFrame = false }
         guard !isAnalysisPaused,
               let observations = request.results as? [VNRecognizedTextObservation] else {
@@ -175,6 +190,12 @@ extension DateScannerController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     self?.detectedDate = match
                 }
                 return
+            }
+        }
+
+        if wasManualCapture {
+            DispatchQueue.main.async { [weak self] in
+                self?.captureFoundNoDate = true
             }
         }
     }

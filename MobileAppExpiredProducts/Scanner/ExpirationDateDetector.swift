@@ -10,7 +10,7 @@ import Foundation
 /// Supported formats (case-insensitive, "/", "-", "." or space separators):
 /// - `12/08/2026`, `12-08-26`, `12.08.2026`  (day first)
 /// - `2026-08-12`                            (year first)
-/// - `08/2026`, `08/26`                      (month and year only → last day of month)
+/// - `08/2026`, `08/26`, `08 2026`           (month and year only → last day of month)
 /// - `12 AUG 2026`, `AGO 2026`               (English and Spanish month abbreviations)
 struct ExpirationDateDetector {
     struct Match: Equatable {
@@ -30,6 +30,10 @@ struct ExpirationDateDetector {
         /(?<first>\d{1,4})[\/\-\.](?<second>\d{1,2})[\/\-\.](?<third>\d{1,4})/
     private static let numericMonthYearPattern =
         /(?<month>\d{1,2})[\/\-\.](?<year>\d{2}|\d{4})(?!\d)/
+    /// "MM YYYY": space separator requires a four-digit year so that plain
+    /// number pairs (lot codes, weights) are not mistaken for dates.
+    private static let numericMonthSpaceYearPattern =
+        /\b(?<month>\d{1,2}) (?<year>\d{4})(?!\d)/
     private static let namedMonthPattern =
         /(?i)(?:(?<day>\d{1,2})[ \/\-\.])?\b(?<month>JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|ENE|ABR|AGO|DIC)[A-Za-z]*[ \/\-\.]?(?<year>\d{2}|\d{4})(?!\d)/
 
@@ -50,6 +54,13 @@ struct ExpirationDateDetector {
             }
         }
         for match in text.matches(of: Self.numericMonthYearPattern) {
+            if let month = Int(match.month), (1...12).contains(month),
+               let year = normalizedYear(Int(match.year)),
+               let date = date(day: nil, month: month, year: year) {
+                return Match(rawText: String(match.0), date: date)
+            }
+        }
+        for match in text.matches(of: Self.numericMonthSpaceYearPattern) {
             if let month = Int(match.month), (1...12).contains(month),
                let year = normalizedYear(Int(match.year)),
                let date = date(day: nil, month: month, year: year) {

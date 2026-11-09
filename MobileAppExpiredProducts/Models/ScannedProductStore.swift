@@ -26,6 +26,12 @@ final class ScannedProductStore {
         pendingScans.removeAll { $0.id == scan.id }
     }
 
+    func update(_ scan: ScannedProduct, rawText: String, expirationDate: Date) {
+        guard let index = pendingScans.firstIndex(where: { $0.id == scan.id }) else { return }
+        pendingScans[index].rawText = rawText
+        pendingScans[index].expirationDate = expirationDate
+    }
+
     /// Sends the pending scans to the backend service.
     /// TODO: implement once the service endpoint is available; on success
     /// the sent scans should be removed from `pendingScans`.

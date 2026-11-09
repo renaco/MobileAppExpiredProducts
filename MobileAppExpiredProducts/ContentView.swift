@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(ScannedProductStore.self) private var store
     @State private var isShowingScanner = false
+    @State private var editingScan: ScannedProduct?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -29,6 +30,11 @@ struct ContentView: View {
         .background(Color(.systemGray6))
         .fullScreenCover(isPresented: $isShowingScanner) {
             ScanView()
+        }
+        .sheet(item: $editingScan) { scan in
+            EditScanView(scan: scan) { rawText, expirationDate in
+                store.update(scan, rawText: rawText, expirationDate: expirationDate)
+            }
         }
     }
 
@@ -50,6 +56,11 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button {
+                        editingScan = scan
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
                     Button(role: .destructive) {
                         store.remove(scan)
                     } label: {
@@ -58,6 +69,54 @@ struct ContentView: View {
                 }
                 .padding(12)
                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+}
+
+/// Sheet for editing a pending scan's read text and expiration date.
+private struct EditScanView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var rawText: String
+    @State private var expirationDate: Date
+
+    let onSave: (String, Date) -> Void
+
+    init(scan: ScannedProduct, onSave: @escaping (String, Date) -> Void) {
+        _rawText = State(initialValue: scan.rawText)
+        _expirationDate = State(initialValue: scan.expirationDate)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Read text") {
+                    TextField("Read text", text: $rawText)
+                }
+                Section("Expiration date") {
+                    DatePicker(
+                        "Expiration date",
+                        selection: $expirationDate,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.graphical)
+                }
+            }
+            .navigationTitle("Edit scan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(rawText, expirationDate)
+                        dismiss()
+                    }
+                    .disabled(rawText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
         }
     }

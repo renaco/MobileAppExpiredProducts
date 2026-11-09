@@ -10,9 +10,9 @@ import Foundation
 struct ScannedProduct: Identifiable, Equatable {
     let id = UUID()
     /// The text exactly as it was read from the packaging, e.g. "EXP 12/08/2026".
-    let rawText: String
+    var rawText: String
     /// The parsed expiration date.
-    let expirationDate: Date
+    var expirationDate: Date
     /// When the scan happened.
     let scannedAt: Date
 

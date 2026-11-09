@@ -37,6 +37,17 @@ struct ExpirationDateDetectorTests {
         #expect(components(match.date) == (28, 2, 2027))
     }
 
+    @Test func detectsSpaceSeparatedMonthYearAsEndOfMonth() throws {
+        let match = try #require(detector.firstDate(in: "EXP 08 2026"))
+        #expect(match.rawText == "08 2026")
+        #expect(components(match.date) == (31, 8, 2026))
+    }
+
+    @Test func rejectsSpaceSeparatedMonthYearWithTwoDigitYear() {
+        // "08 26" is too ambiguous (lot codes, weights) to treat as a date.
+        #expect(detector.firstDate(in: "LOT 08 26") == nil)
+    }
+
     @Test func detectsNamedMonths() throws {
         let english = try #require(detector.firstDate(in: "EXP 12 AUG 2026"))
         #expect(components(english.date) == (12, 8, 2026))
