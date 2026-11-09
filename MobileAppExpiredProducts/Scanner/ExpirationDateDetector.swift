@@ -12,9 +12,19 @@ import Foundation
 /// - `2026-08-12`                            (year first)
 /// - `08/2026`, `08/26`, `08 2026`           (month and year only → last day of month)
 /// - `12 AUG 2026`, `AGO 2026`               (English and Spanish month abbreviations)
+///
+/// Labels often print several dates (e.g. `MFG:27.08.2025` and `EXP:27.02.2027`),
+/// so a date right after an expiry marker (`EXP`, `EXP:`, `EXP.`, `EXPIRY`,
+/// `EXP DATE`) always wins. Without one, the first date that does not follow a
+/// manufacturing/lot marker (`MFG`, `MFD`, `PROD`, `LOT`, …) is used.
 struct ExpirationDateDetector {
     struct Match: Equatable {
         let rawText: String
+        let date: Date
+    }
+
+    private struct Candidate {
+        let range: Range<String.Index>
         let date: Date
     }
 
@@ -25,6 +35,15 @@ struct ExpirationDateDetector {
         // Spanish (where different)
         "ENE": 1, "ABR": 4, "AGO": 8, "DIC": 12,
     ]
+
+    /// "EXP", "EXP:", "EXP.", "EXPIRY", "EXP DATE", "EXPIRATION DATE"… plus the
+    /// punctuation and spacing before the date. OCR of dot-matrix prints often
+    /// turns ":" into ";" or "=", so those are accepted too.
+    private static let expiryMarkerPattern =
+        /(?i)\bEXP(?:IRY|IRATION)?(?:\s*DATE)?\s*[:;.=\-]?\s*/
+    /// Markers whose following date is not the expiration date.
+    private static let nonExpiryMarkerPattern =
+        /(?i)\b(?:MFG|MFD|MFB|MF6|MANUF[A-Z]*|PROD[A-Z]*|PKD|PACKED|LOT|FAB[A-Z]*|ELAB[A-Z]*)\.?\s*[:;.=\-]?\s*$/
 
     private static let numericFullPattern =
         /(?<first>\d{1,4})[\/\-\.](?<second>\d{1,2})[\/\-\.](?<third>\d{1,4})/
@@ -39,35 +58,58 @@ struct ExpirationDateDetector {
 
     private let calendar = Calendar(identifier: .gregorian)
 
-    /// Returns the first valid expiration date found in `text`, or nil.
-    func firstDate(in text: String) -> Match? {
+    /// Returns the expiration date found in `text`, or nil.
+    ///
+    /// `text` may hold several recognized lines joined by newlines.
+    func expirationDate(in text: String) -> Match? {
+        // 1. A date directly after an EXP marker.
+        for marker in text.matches(of: Self.expiryMarkerPattern) {
+            let rest = text[marker.range.upperBound...]
+            if let candidate = candidates(in: rest).first(where: { $0.range.lowerBound == rest.startIndex }) {
+                let raw = text[marker.range.lowerBound..<candidate.range.upperBound]
+                    .replacingOccurrences(of: "\n", with: " ")
+                return Match(rawText: raw, date: candidate.date)
+            }
+        }
+
+        // 2. Fallback: any date not labeled as manufacturing/lot.
+        let fallback = candidates(in: text[...]).first { candidate in
+            text[..<candidate.range.lowerBound].firstMatch(of: Self.nonExpiryMarkerPattern) == nil
+        }
+        return fallback.map { Match(rawText: String(text[$0.range]), date: $0.date) }
+    }
+
+    /// Valid dates in `text`, ordered by pattern priority (full numeric,
+    /// named month, month/year, month space year) and then by position.
+    private func candidates(in text: Substring) -> [Candidate] {
+        var result: [Candidate] = []
         for match in text.matches(of: Self.numericFullPattern) {
             if let date = date(first: Int(match.first), second: Int(match.second), third: Int(match.third)) {
-                return Match(rawText: String(match.0), date: date)
+                result.append(Candidate(range: match.range, date: date))
             }
         }
         for match in text.matches(of: Self.namedMonthPattern) {
             if let month = Self.monthsByAbbreviation[match.month.uppercased()],
                let year = normalizedYear(Int(match.year)),
                let date = date(day: match.day.flatMap { Int($0) }, month: month, year: year) {
-                return Match(rawText: String(match.0), date: date)
+                result.append(Candidate(range: match.range, date: date))
             }
         }
         for match in text.matches(of: Self.numericMonthYearPattern) {
             if let month = Int(match.month), (1...12).contains(month),
                let year = normalizedYear(Int(match.year)),
                let date = date(day: nil, month: month, year: year) {
-                return Match(rawText: String(match.0), date: date)
+                result.append(Candidate(range: match.range, date: date))
             }
         }
         for match in text.matches(of: Self.numericMonthSpaceYearPattern) {
             if let month = Int(match.month), (1...12).contains(month),
                let year = normalizedYear(Int(match.year)),
                let date = date(day: nil, month: month, year: year) {
-                return Match(rawText: String(match.0), date: date)
+                result.append(Candidate(range: match.range, date: date))
             }
         }
-        return nil
+        return result
     }
 
     /// Interprets a three-component numeric date, trying year-first

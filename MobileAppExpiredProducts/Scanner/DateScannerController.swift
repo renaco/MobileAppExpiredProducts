@@ -182,15 +182,17 @@ extension DateScannerController: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        for observation in observations {
-            guard let candidate = observation.topCandidates(1).first else { continue }
-            if let match = detector.firstDate(in: candidate.string) {
-                isAnalysisPaused = true
-                DispatchQueue.main.async { [weak self] in
-                    self?.detectedDate = match
-                }
-                return
+        // Look at all lines together so an "EXP" date wins over an earlier
+        // "MFG" date printed on another line of the same label.
+        let text = observations
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
+        if let match = detector.expirationDate(in: text) {
+            isAnalysisPaused = true
+            DispatchQueue.main.async { [weak self] in
+                self?.detectedDate = match
             }
+            return
         }
 
         if wasManualCapture {
